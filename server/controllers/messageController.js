@@ -1,7 +1,6 @@
 import Message from "../models/Message.js";
 import User from "../models/User.js";
 import cloudinary from "../lib/cloudinary.js";
-import { io, userSocketMap } from "../server.js";
 
 //  Get all user excpet login user
 export const getUserFromSidebar = async(req, res)=>{
@@ -78,11 +77,8 @@ export const sendMessage = async (req, res)=> {
             text,
             image: imageUrl
         })
-        // Emit the new message to the reveiver's socket 
-        const receiverSocketId = userSocketMap[receiverId];
-        if(receiverSocketId){
-            io.to(receiverSocketId).emit("newMessage", newMessage);
-        }
+        // Note: Socket.io real-time emission removed for Vercel serverless compatibility
+        // Messages will be fetched on client refresh or next poll
         res.json({success: true, newMessage});
 
     } catch (error) {

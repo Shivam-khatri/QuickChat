@@ -6,6 +6,7 @@ import { connectDB } from "./lib/db.js";
 import userRouter from "./routes/userRoutes.js";
 import messageRouter from "./routes/messageRoutes.js";
 
+
 // Create Express app
 const app = express();
 
@@ -13,12 +14,25 @@ const app = express();
 app.use(express.json({ limit: "4mb" }));   //for images
 app.use(cors());  //for urls to connect with backend 
 
-// Connect MONGODB
-await connectDB().catch((error) => {
-    console.error("Initial DB connection failed:", error);
-});
+// Connect MONGODB on first request
+let dbConnected = false;
+const initDB = async () => {
+    if (!dbConnected) {
+        try {
+            await connectDB();
+            dbConnected = true;
+        } catch (error) {
+            console.error("DB connection failed:", error);
+        }
+    }
+};
 
 // Routes Setup
+app.use(async (req, res, next) => {
+    await initDB();
+    next();
+});
+
 app.get("/api/status", (req, res) => res.json({ status: "Server is Live" }));
 app.use("/api/auth", userRouter);
 app.use("/api/messages", messageRouter);

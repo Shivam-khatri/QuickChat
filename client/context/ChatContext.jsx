@@ -11,6 +11,7 @@ export const ChatProvider = ({ children })=>{
     const [users, setUsers] = useState([]);
     const [selectedUser, setSelectedUser] = useState(null);
     const [unseenMessages, setUnseenMessages] = useState({});
+    const [pollingInterval, setPollingInterval] = useState(null);
 
     const{socket, axios} = useContext(AuthContext);
 
@@ -54,31 +55,52 @@ export const ChatProvider = ({ children })=>{
         }
     }
     
-    // function to subscribe to message for selected user
+    // function to subscribe to message for selected user (using polling instead of Socket.io)
     const subscribeToMessage = async() =>{
-        if(!socket) return;
-        socket.on("newMessage",(newMessage)=>{
-            if(selectedUser && newMessage.senderId === selectedUser._id){
-                newMessage.seen = true;
-                setMessages ((prevMessages)=>[...prevMessages, newMessage]);
-                axios.put(`/api/messages/mark/${newMessage._id}`);
-            }else{
-               setUnseenMessages(()=>({
-                    ...prevUnseenMessages, [newMessage.senderId] : 
-                    prevUnseenMessages[newMessage.senderId] ? prevUnseenMessages[newMessage.senderId] + 1 : 1 
-               }))
+        // Poll for new messages every 2 seconds
+        const interval = setInterval(async() => {
+            try {
+                const { data } = await axios.get("/api/messages/users");
+                if(data.success){
+                    setUnseenMessages(data.unseenMessages);
+                    
+                    // If a user is selected, fetch their messages to check for new ones
+                    if(selectedUser){
+                        const messagesData = await axios.get(`/api/messages/${selectedUser._id}`);
+                        if(messagesData.data.success){
+                            setMessages(messagesData.data.messages);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("Error polling messages:", error);
             }
-        })
+        }, 2000);
+        
+        return interval;
     }
     
     // function to unsubscribe from messages
-    const unsubscribeFromMessages = ()=>{
-        if(socket) socket.off("newMessage");
+    const unsubscribeFromMessages = (interval) =>{
+        if(interval) clearInterval(interval);
     }
     useEffect(()=>{
-        subscribeToMessage();
-        return ()=> unsubscribeFromMessages();
-    },[socket, selectedUser])
+        const startPolling = async() => {
+            const interval = await subscribeToMessage();
+            setPollingInterval(interval);
+        };
+        startPolling();
+        return ()=> {
+            // Cleanup will happen in the next effect or component unmount
+        }
+    },[selectedUser])
+    
+    // Separate useEffect for cleanup to avoid stale closures
+    useEffect(()=>{
+        return ()=> {
+            if(pollingInterval) clearInterval(pollingInterval);
+        }
+    },[pollingInterval])
 
     useEffect(()=>{
         if(selectedUser?._id){
